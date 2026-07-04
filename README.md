@@ -243,12 +243,6 @@ Built for educational purposes as part of GenAI & Agentic AI Engineering program
 
 ---
 
-## 👥 Contributors
-
-- **Manvitha** — [GitHub](https://github.com/Manvitha-2905)
-
----
-
 ## 🙏 Acknowledgments
 
 - **BVRIT Hyderabad** — For the official knowledge base
