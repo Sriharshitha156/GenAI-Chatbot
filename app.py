@@ -11,6 +11,7 @@ import streamlit as st
 from src.ingest import load_and_index_document
 from src.retriever import get_retriever
 from src.generator import generate_answer, FREE_MODEL
+from agentic_chain import generate_with_tools
 
 COLLEGE_IMAGE_PATH = "assets/college.png"
 _IMAGE_KEYWORDS   = ["image", "photo", "picture", "look", "looks like", "appearance", "show me", "how does it look", "what does it look"]
@@ -435,6 +436,8 @@ with st.sidebar:
 
     top_k = 5
     section_filter = None
+    use_tools = st.checkbox("🔧 Enable tools (fee calc, date checker)", value=True, 
+                            help="When enabled, the chatbot can use fee_calculator and date_checker tools for computations.")
 
     if st.button("🧹 Clear chat", use_container_width=True):
         st.session_state.messages = []
@@ -553,13 +556,31 @@ if query:
         else:
             with st.spinner("Thinking…"):
                 t0 = time.time()
-                answer, citations, refused = generate_answer(
-                    retriever=st.session_state.retriever,
-                    query=query,
-                    top_k=top_k,
-                    section_filter=section_filter,
-                )
-                latency = time.time() - t0
+                if use_tools:
+                    result = generate_with_tools(
+                        retriever=st.session_state.retriever,
+                        query=query,
+                        top_k=top_k,
+                        section_filter=section_filter,
+                    )
+                    answer = result["answer"]
+                    citations = result["citations"]
+                    refused = result["refused"]
+                    latency = result["latency_seconds"]
+                    # Show routing info in sidebar
+                    routing = result["routing"]
+                    if routing.startswith("tool:"):
+                        st.caption(f"🔧 Used: {routing[5:]}")
+                    elif routing == "RAG":
+                        st.caption("📄 Used: RAG (knowledge base)")
+                else:
+                    answer, citations, refused = generate_answer(
+                        retriever=st.session_state.retriever,
+                        query=query,
+                        top_k=top_k,
+                        section_filter=section_filter,
+                    )
+                    latency = time.time() - t0
 
         if refused:
             st.markdown('<span class="refused-badge">⛔ Out of scope</span>', unsafe_allow_html=True)
