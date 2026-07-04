@@ -1,0 +1,57 @@
+# ── Environment & secrets ──────────────────────────────────────────────────────
+.env
+*.env
+.env.*
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+.eggs/
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ── ChromaDB (vector store — auto-rebuilt on first run) ───────────────────────
+chroma_db/
+
+# ── HuggingFace model cache ────────────────────────────────────────────────────
+.cache/
+~/.cache/huggingface/
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ────────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Streamlit ──────────────────────────────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ── Evaluation output ─────────────────────────────────────────────────────────
+evaluation_report.txt
