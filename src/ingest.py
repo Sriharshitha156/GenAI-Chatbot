@@ -11,8 +11,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-# Persistent directory for ChromaDB
-CHROMA_DIR = "chroma_db"
+# Persistent directory for ChromaDB (always relative to this script's location)
+_INGEST_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(_INGEST_DIR)
+CHROMA_DIR = os.path.join(PROJECT_ROOT, "chroma_db")
 COLLECTION_NAME = "bvrit_kb"
 
 
