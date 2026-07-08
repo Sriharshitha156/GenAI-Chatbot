@@ -19,12 +19,14 @@ COLLECTION_NAME = "bvrit_kb"
 
 
 def get_embeddings() -> HuggingFaceEmbeddings:
-    """Get free local embeddings using sentence-transformers (no API key needed)."""
-    return HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2",
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    """Get free local embeddings — cached at module level to avoid reloading on every rerun."""
+    if not hasattr(get_embeddings, "_cached"):
+        get_embeddings._cached = HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+    return get_embeddings._cached
 
 
 def load_document(filepath: str) -> List[Document]:

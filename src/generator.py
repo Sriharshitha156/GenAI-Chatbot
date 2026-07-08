@@ -3,16 +3,15 @@ Grounded generation module: produces cited answers using retrieved context.
 Uses free OpenRouter models (no billing needed).
 """
 import os
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Dict, Optional
 from openai import OpenAI
 
 # Model preference order — first available non-garbling free model is used
 # nvidia/nemotron-3-super-120b was producing garbled pad-token output
-FREE_MODEL = "openai/gpt-oss-20b:free"
+FREE_MODEL = "gpt-4o-mini"
 _FALLBACK_MODELS = [
-    "liquid/lfm-2.5-1.2b-instruct:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemma-4-26b-a4b-it:free",
+    "gpt-4o",
+    "Phi-3.5-mini-instruct",
 ]
 
 SYSTEM_PROMPT = """You are Zia 🎓, a friendly and helpful FAQ assistant for BVRITH - College of Engineering for Women (also known as BVRITH, BVRITH, or BVRIT). You genuinely care about helping students, parents, and anyone curious about the college.
@@ -69,6 +68,8 @@ def generate_answer(
     top_k: int = 5,
     section_filter: Optional[str] = None,
     model: str = FREE_MODEL,
+    conversation_history: Optional[List[Dict]] = None,
+    system_prompt_override: Optional[str] = None,
 ) -> Tuple[str, List[str], bool]:
     """
     Generate a grounded, cited answer using RAG.
@@ -181,54 +182,53 @@ def generate_answer(
             seen.add(label)
             citations.append(f"[{label}]")
 
-    # Call LLM via OpenRouter
-    api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+    # Call LLM
+    api_key  = os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("OPENAI_BASE_URL", "https://models.inference.ai.azure.com")
 
     if not api_key:
         raise ValueError("OPENAI_API_KEY not set in .env file")
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt_override or SYSTEM_PROMPT},
+    ]
+    # Exercise 1: inject full conversation history before the current turn
+    if conversation_history:
+        for h in conversation_history:
+            messages.append({"role": h["role"], "content": h["content"]})
+    messages.append(
         {
             "role": "user",
             "content": (
                 f"## Retrieved Context\n\n{context}\n\n"
                 f"## User Question\n\n{query_normalised}"
             ),
-        },
-    ]
+        }
+    )
 
+    from src.observability import logged_llm_call
     client = OpenAI(api_key=api_key, base_url=base_url)
 
     def _call_model(m: str) -> str | None:
-        """Call one model; return answer text or None if garbled/empty."""
-        try:
-            resp = client.chat.completions.create(
-                model=m,
-                messages=messages,
-                temperature=0.1,
-                max_tokens=700,
-                extra_headers={
-                    "HTTP-Referer": "https://bvrit-faq-chatbot.local",
-                    "X-Title": "BVRIT FAQ Chatbot",
-                },
-            )
-            if not resp.choices:
-                return None
-            text = resp.choices[0].message.content
-            if not text:
-                return None
-            text = text.strip()
-            # Reject garbled pad-token output
-            if "<pad>" in text or text.count(",") > len(text) // 4:
-                return None
-            return text
-        except Exception as e:
-            err = str(e)
-            if "429" in err or "rate" in err.lower():
-                return None  # try next fallback
-            raise
+        """Call one model via logged wrapper; return answer text or None."""
+        resp = logged_llm_call(
+            client=client,
+            model=m,
+            messages=messages,
+            purpose="chat",
+            temperature=0.1,
+            max_tokens=500,
+            timeout=20,
+        )
+        if resp is None or not resp.choices:
+            return None
+        text = resp.choices[0].message.content
+        if not text:
+            return None
+        text = text.strip()
+        if "<pad>" in text or text.count(",") > len(text) // 4:
+            return None
+        return text
 
     answer = None
     for attempt_model in [model] + _FALLBACK_MODELS:

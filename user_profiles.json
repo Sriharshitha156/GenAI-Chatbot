@@ -1,0 +1,23 @@
+{
+  "default_user": {
+    "user_id": "default_user",
+    "name": null,
+    "branch_interest": "B.Tech CSE",
+    "language": "English",
+    "detail_level": "normal",
+    "prior_topics": [
+      "placements",
+      "fees",
+      "departments",
+      "admissions",
+      "hostel",
+      "campus"
+    ],
+    "last_session_summary": null,
+    "fee_amounts_discussed": [],
+    "scholarship_details": null,
+    "created_at": 1783149533.810325,
+    "last_accessed": 1783518313.5219562,
+    "is_new": false
+  }
+}

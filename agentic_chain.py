@@ -71,7 +71,7 @@ def generate_with_tools(
     query: str,
     top_k: int = 5,
     section_filter: Optional[str] = None,
-    model: str = "openai/gpt-oss-20b:free",
+    model: str = "gpt-4o-mini",
     max_tool_rounds: int = 3,
 ) -> dict:
     """
@@ -127,8 +127,8 @@ def generate_with_tools(
             citations.append(f"[{label}]")
 
     # ── API setup ──
-    api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+    api_key  = os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("OPENAI_BASE_URL", "https://models.inference.ai.azure.com")
     
     if not api_key:
         return {
@@ -149,103 +149,51 @@ def generate_with_tools(
     ]
 
     _fallback_models = [
-        "liquid/lfm-2.5-1.2b-instruct:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "google/gemma-4-26b-a4b-it:free",
+        "gpt-4o",
+        "Phi-3.5-mini-instruct",
     ]
+
+    from src.observability import logged_llm_call
 
     tool_call_log = []
 
     for round_idx in range(max_tool_rounds):
-        # Call LLM with tools
-        answer_text = None
+        msg = None
         for attempt_model in [model] + _fallback_models:
-            try:
-                resp = client.chat.completions.create(
-                    model=attempt_model,
-                    messages=messages,
-                    tools=TOOL_SCHEMAS,
-                    temperature=0.0,
-                    max_tokens=700,
-                    extra_headers={
-                        "HTTP-Referer": "https://bvrit-faq-chatbot.local",
-                        "X-Title": "BVRIT FAQ Chatbot",
-                    },
-                )
-                if resp.choices and resp.choices[0].message:
-                    msg = resp.choices[0].message
-                    # Check for tool calls
-                    if msg.tool_calls:
-                        break  # process tool calls below
-                    if msg.content:
-                        answer_text = msg.content.strip()
-                        break
-            except Exception:
-                continue
+            resp = logged_llm_call(
+                client=client,
+                model=attempt_model,
+                messages=messages,
+                purpose="chat",
+                tools=TOOL_SCHEMAS,
+                temperature=0.0,
+                max_tokens=700,
+                timeout=20,
+            )
+            if resp and resp.choices and resp.choices[0].message:
+                m = resp.choices[0].message
+                if m.tool_calls or (m.content and m.content.strip()):
+                    msg = m
+                    break
 
-        # If we got a tool call, handle it
-        if answer_text is None and msg.tool_calls:
-            messages.append({
-                "role": "assistant",
-                "content": msg.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in msg.tool_calls
-                ],
-            })
-            
-            for tc in msg.tool_calls:
-                name = tc.function.name
-                try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
-                
-                fn = TOOL_FUNCTIONS.get(name)
-                if fn is None:
-                    result = {"error": True, "messages": [f"Unknown tool '{name}'."]}
-                else:
-                    try:
-                        result = fn(**args)
-                    except Exception as e:
-                        result = {"error": True, "messages": [f"Tool raised an exception: {e}"]}
-                
-                tool_call_log.append({"name": name, "args": args, "result": result})
-                messages.append({
-                    "role": "tool",
-                    "content": json.dumps(result),
-                    "tool_call_id": tc.id,
-                })
-            continue  # go to next round to get final answer
+        # All models failed
+        if msg is None:
+            break
 
-        if answer_text:
+        # Plain text answer — done
+        if msg.content and msg.content.strip() and not msg.tool_calls:
+            answer_text = msg.content.strip()
             latency = time.time() - start
-            routing = "tool:" + "+".join(t["name"] for t in tool_call_log) if tool_call_log else \
-                      ("RAG" if context and any(
-                          f"[{c}]" in answer_text for c in citations
-                      ) else "none")
-            
-            # Check for refusal
+            routing = "tool:" + "+".join(t["name"] for t in tool_call_log) if tool_call_log else "RAG"
             refused = any(
                 phrase in answer_text.lower()
                 for phrase in [
-                    "i don't have that specific detail",
-                    "i don't have that",
-                    "hmm, i don't have",
-                    "i'm not able to share",
-                    "please contact bvrit",
-                    "please contact the college",
+                    "i don't have that specific detail", "i don't have that",
+                    "hmm, i don't have", "i'm not able to share",
+                    "please contact bvrit", "please contact the college",
                     "please contact the administration",
                 ]
             )
-            
             return {
                 "answer": answer_text,
                 "routing": routing,
@@ -255,14 +203,37 @@ def generate_with_tools(
                 "latency_seconds": latency,
             }
 
-    # If we exhausted all rounds without a final text answer
-    latency = time.time() - start
+        # Tool call — execute and loop back
+        if msg.tool_calls:
+            messages.append({
+                "role": "assistant",
+                "content": msg.content or "",
+                "tool_calls": [
+                    {"id": tc.id, "type": "function",
+                     "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                    for tc in msg.tool_calls
+                ],
+            })
+            for tc in msg.tool_calls:
+                name = tc.function.name
+                try:
+                    args = json.loads(tc.function.arguments)
+                except json.JSONDecodeError:
+                    args = {}
+                fn = TOOL_FUNCTIONS.get(name)
+                result = fn(**args) if fn else {"error": True, "messages": [f"Unknown tool '{name}'"]}
+                tool_call_log.append({"name": name, "args": args, "result": result})
+                messages.append({"role": "tool", "content": json.dumps(result), "tool_call_id": tc.id})
+            continue
+
+    # All models failed on tools path — fall back to plain RAG
+    from src.generator import generate_answer
+    answer, citations, refused = generate_answer(retriever, query, top_k, section_filter)
     return {
-        "answer": "I ran into trouble completing that request. Please rephrase "
-                  "or contact info@bvrithyderabad.edu.in for help.",
-        "routing": "tool:" + "+".join(t["name"] for t in tool_call_log) if tool_call_log else "none",
-        "tool_calls": tool_call_log,
+        "answer": answer,
+        "routing": "RAG",
+        "tool_calls": [],
         "citations": citations,
-        "refused": True,
-        "latency_seconds": latency,
+        "refused": refused,
+        "latency_seconds": time.time() - start,
     }

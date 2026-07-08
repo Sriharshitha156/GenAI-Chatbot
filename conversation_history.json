@@ -1,0 +1,68 @@
+{
+  "default_user": [
+    {
+      "role": "user",
+      "content": "hi "
+    },
+    {
+      "role": "assistant",
+      "content": "Hey there! 👋 I'm **Zia**, your friendly guide to everything about BVRITH - College of Engineering for Women!\n\nI can help you with **admissions**, **fees**, **departments**, **placements**, **campus facilities**, **faculty**, and more. What would you like to know? 😊"
+    },
+    {
+      "role": "user",
+      "content": "admissions"
+    },
+    {
+      "role": "assistant",
+      "content": "For admissions to BVRIT Hyderabad College of Engineering for Women, here are the key details:\n\n1. **Eligibility for B.Tech Admission**:\n   - Completion of 10+2 with Mathematics, Physics, and Chemistry (MPC) as major subjects.\n   - Minimum 60% aggregate marks.\n   - Selection is through TS EAMCET (Telangana State Engineering, Agriculture and Medical Common Entrance Test) [Section 4].\n\n2. **How to Apply**:\n   - **Category A**: Apply online through the TS EAMCET Convener process after the official TS EAMCET notification.\n   - **Category B**: Apply online through the BVRITH college website once TSCHE releases its notification.\n   - Re-application is not required once a form is submitted.\n   - The complete admission schedule is published by TSCHE at the time of notification [Section 5].\n\n3. **Contact for Admissions**:\n   - Dr. J. Manoj Kumar (Professor i/c Admissions)\n   - Mobile: 92471 64714 [Section 1].\n\nIf you have any specific questions about the admissions process or requirements, feel free to ask!"
+    },
+    {
+      "role": "user",
+      "content": "PLACEMENTS"
+    },
+    {
+      "role": "assistant",
+      "content": "BVRIT Hyderabad College of Engineering for Women has a dedicated placement team led by Sri. S. Jagapathi Reddy as the Manager of Placements and Sri. K. Mahesh Babu as the Assistant Manager of Placements. The college has a representative list of recruiters that includes major companies such as Microsoft, Amazon, Adobe, Flipkart, Walmart, Qualcomm, Visa, Optum, Synopsys, IBM, Oracle, Dell, State Street, PwC, Capgemini, Accenture, Cognizant, TCS, Tech Mahindra, Infosys, Wipro, KPIT, Genpact, Deloitte, and HCL Technologies, among others. \n\nPlacement records are published batch-wise, summarizing the most recent published batches [Section 5: Placements]."
+    },
+    {
+      "role": "user",
+      "content": "FEE STRUCTURE "
+    },
+    {
+      "role": "assistant",
+      "content": "The fee structure for various batches at BVRIT Hyderabad College of Engineering for Women is as follows:\n\n**2025 Batch:**\n- CSE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- ECE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- EEE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- CSM (CSE-AIML): Tuition Fee - ₹120,000, NBA Fee - —, JNTUH/Misc. Fee - ₹5,500\n\n**2024 Batch:**\n- CSE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- ECE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- EEE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- CSM: Tuition Fee - ₹120,000, NBA Fee - —, JNTUH/Misc. Fee - ₹5,500\n\n**2023 Batch:**\n- CSE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- ECE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- IT: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- EEE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- CSM: Tuition Fee - ₹120,000, NBA Fee - —, JNTUH/Misc. Fee - ₹5,500\n\n**2022 Batch:**\n- CSE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹2,500\n- ECE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹2,500\n- IT: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹2,500\n- EEE: Tuition Fee - ₹120,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹2,500\n- CSM: Tuition Fee - ₹120,000, NBA Fee - —, JNTUH/Misc. Fee - ₹2,500\n\n**2020 Batch:**\n- CSE: Tuition Fee - ₹90,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5,500\n- ECE: Tuition Fee - ₹90,000, NBA Fee - ₹3,000, JNTUH/Misc. Fee - ₹5"
+    },
+    {
+      "role": "user",
+      "content": "HOSTEL DETAILS"
+    },
+    {
+      "role": "assistant",
+      "content": "The hostel facilities at BVRIT Hyderabad College of Engineering for Women include:\n\n- 4 blocks of hostels with over 150 rooms and an occupancy of more than 500 students.\n- Located within the college campus.\n- Amenities include a common room, gym area, 24/7 water supply, geyser systems, nutritious food, and television.\n- The campus is 100% ragging-free, supported by an anti-ragging squad.\n- There are experienced lady wardens and security officers for each block.\n- A full-time lady physical director is available for outdoor games such as volleyball, badminton, and throw-ball."
+    },
+    {
+      "role": "user",
+      "content": "CAMPUS FACILITIES "
+    },
+    {
+      "role": "assistant",
+      "content": "BVRIT Hyderabad College of Engineering for Women offers a variety of campus facilities, including:\n\n- Food and Cafeteria\n- Gym\n- Temple (on-campus place of worship)\n- Security services\n- PCS (campus support) Facilities\n- College-provided transportation with multiple bus routes covering areas such as Attapur, Sangareddy, Kushaiguda, and more [Source 2]."
+    },
+    {
+      "role": "user",
+      "content": "EDUCATION"
+    },
+    {
+      "role": "assistant",
+      "content": "I don't have specific information regarding the education programs or details about the curriculum at BVRIT Hyderabad College of Engineering for Women. For more information, you can contact them at info@bvrithyderabad.edu.in or +91 40 4241 7773."
+    },
+    {
+      "role": "user",
+      "content": "CSE AIML EDUCATION DETAILS"
+    },
+    {
+      "role": "assistant",
+      "content": "The CSE (Artificial Intelligence and Machine Learning) program, also referred to as CSE-AIML or CSM, is part of the Computer Science and Engineering department at BVRIT. It does not have a separate NBA fee line item, and the current tuition fee for all branches, including CSE-AIML, is INR 1,20,000 per year [Section 4]. \n\nThe program is designed to prepare students for careers in computing, IT, and software systems, with a focus on artificial intelligence and machine learning applications. The intake for the CSE-AIML program is included in the overall intake of 180 seats for the Computer Science and Engineering department [Section 3]. \n\nIf you need more specific details or have further questions, feel free to ask!"
+    }
+  ]
+}

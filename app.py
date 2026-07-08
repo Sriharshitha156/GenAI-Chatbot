@@ -13,6 +13,10 @@ from src.retriever import get_retriever
 from src.generator import generate_answer, FREE_MODEL
 from agentic_chain import generate_with_tools
 
+@st.cache_resource(show_spinner=False)
+def _load_index(doc_path: str):
+    return load_and_index_document(doc_path)
+
 COLLEGE_IMAGE_PATH = "assets/college.png"
 _IMAGE_KEYWORDS   = ["image", "photo", "picture", "look", "looks like", "appearance", "show me", "how does it look", "what does it look"]
 _BVRIT_KEYWORDS   = ["bvrit", "bvrith", "bvrit hyderabad", "bvrit narsapur"]  # explicit BVRIT only
@@ -385,9 +389,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ─── Memory imports (Day 5) ────────────────────────────────────────────────────
+from src.memory import (
+    load_profile, save_profile, delete_profile,
+    load_history, save_history,
+    build_personalised_system_prompt, update_profile_from_turn,
+    compress_history, is_clear_data_command,
+    PRIVACY_NOTICE, _SUMMARISE_EVERY,
+)
+
 # ─── Session State ──────────────────────────────────────────────────────────────
 if "messages" not in st.session_state:
-    st.session_state.messages = []        # {role, content, citations, refused, time}
+    st.session_state.messages = []
+if "llm_history" not in st.session_state:
+    st.session_state.llm_history = []     # compressed history sent to LLM
 if "index_ready" not in st.session_state:
     st.session_state.index_ready = False
     st.session_state.vectorstore = None
@@ -395,6 +410,15 @@ if "index_ready" not in st.session_state:
     st.session_state.retriever = None
 if "suggested_query" not in st.session_state:
     st.session_state.suggested_query = None
+if "user_id" not in st.session_state:
+    st.session_state.user_id = "default_user"
+if "profile" not in st.session_state:
+    st.session_state.profile = load_profile(st.session_state.user_id)
+if "llm_history" not in st.session_state:
+    # Restore history from ChromaDB (separate collection from KB)
+    st.session_state.llm_history = load_history(st.session_state.user_id)
+if "privacy_shown" not in st.session_state:
+    st.session_state.privacy_shown = not st.session_state.profile.get("is_new", True)
 
 # ─── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -411,7 +435,7 @@ with st.sidebar:
     if not st.session_state.index_ready:
         with st.status("📚 Indexing knowledge base…", expanded=True) as status:
             try:
-                vs, n = load_and_index_document(doc_path)
+                vs, n = _load_index(doc_path)
                 st.session_state.vectorstore = vs
                 st.session_state.chunk_count = n
                 st.session_state.retriever = get_retriever(vs)
@@ -436,179 +460,386 @@ with st.sidebar:
 
     top_k = 5
     section_filter = None
+
+    # Section filter dropdown
+    SECTION_OPTIONS = [
+        "All Sections",
+        "About BVRIT",
+        "Departments",
+        "Admissions",
+        "Fee Structure",
+        "Placements",
+        "Campus & Facilities",
+        "Faculty",
+        "Contact",
+    ]
+    selected_section = st.selectbox(
+        "🔍 Filter by Section",
+        SECTION_OPTIONS,
+        help="Restrict retrieval to a specific knowledge base section",
+    )
+    if selected_section != "All Sections":
+        section_filter = selected_section
+
     use_tools = st.checkbox("🔧 Enable tools (fee calc, date checker)", value=True, 
                             help="When enabled, the chatbot can use fee_calculator and date_checker tools for computations.")
 
     if st.button("🧹 Clear chat", use_container_width=True):
         st.session_state.messages = []
+        st.session_state.llm_history = []
+        save_history(st.session_state.user_id, [])  # wipe from ChromaDB too
         st.rerun()
+
+    # Profile display (Exercise 3+4)
+    st.markdown("<hr style='border-color:rgba(255,255,255,0.07);margin:0.8rem 0;'>", unsafe_allow_html=True)
+    _p = st.session_state.profile
+    if _p.get("name"):
+        st.markdown(f"👤 **{_p['name']}**")
+    if _p.get("branch_interest"):
+        st.caption(f"🎓 {_p['branch_interest']}")
+    if _p.get("detail_level", "normal") != "normal":
+        st.caption(f"📝 Style: {_p['detail_level']}")
+    _turns = len([m for m in st.session_state.messages if m["role"] == "user"])
+    st.caption(f"💬 {_turns} turns this session")
 
     st.markdown(
         "<p style='text-align:center;color:rgba(255,255,255,0.18);font-size:0.62rem;"
-        "margin-top:1.5rem;'>BVRITH · GenAI Lab · Day 4</p>",
+        "margin-top:1.5rem;'>BVRITH · GenAI Lab · Day 5</p>",
         unsafe_allow_html=True,
     )
 
-# ─── Chat Header ────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="chat-header">
-    <div class="avatar">🎓</div>
-    <div class="info">
-        <h2>Zia — BVRITH FAQ</h2>
-        <p><span class="status-dot"></span>RAG-powered · Answers grounded in the official knowledge base</p>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# ─── Tabs ────────────────────────────────────────────────────────────────────────
+tab_chat, tab_eval = st.tabs(["💬 Chat", "📊 Evaluation Dashboard"])
 
-# ─── Chat History ────────────────────────────────────────────────────────────────
-if not st.session_state.messages:
+with tab_chat:
     st.markdown("""
-    <div class="welcome-wrap">
-        <div class="icon">🎓</div>
-        <h3>Hey! I'm Zia 👋</h3>
-        <p>Your personal AI guide to BVRITH - College of Engineering for Women.<br>
-        Ask me anything — I'm here to help!</p>
-        <p style="color:rgba(240,238,255,0.35);font-size:0.75rem;margin-top:1rem;">👇 Tap a topic to get started</p>
+    <div class="chat-header">
+        <div class="avatar">🎓</div>
+        <div class="info">
+            <h2>Zia — BVRITH FAQ</h2>
+            <p><span class="status-dot"></span>RAG-powered · Answers grounded in the official knowledge base</p>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    TOPICS = [
-        ("🏫", "Admissions", "How do I get admission to BVRIT Hyderabad?"),
-        ("💰", "Fee Structure", "What is the fee structure at BVRIT Hyderabad?"),
-        ("🏆", "Placements", "What are the placement stats at BVRIT?"),
-        ("📚", "Departments", "What B.Tech departments are offered at BVRIT?"),
-        ("🏕️", "Campus Life", "Tell me about campus facilities at BVRIT"),
-        ("📞", "Contact", "How can I contact BVRIT Hyderabad?"),
-    ]
-    col1, col2, col3 = st.columns(3)
-    for i, (emoji, label, query_text) in enumerate(TOPICS):
-        col = [col1, col2, col3][i % 3]
-        with col:
-            if st.button(f"{emoji} {label}", key=f"topic_{i}", use_container_width=True):
-                st.session_state.suggested_query = query_text
-                st.rerun()
+    if not st.session_state.messages:
+        st.markdown("""
+        <div class="welcome-wrap">
+            <div class="icon">🎓</div>
+            <h3>Hey! I'm Zia 👋</h3>
+            <p>Your personal AI guide to BVRITH - College of Engineering for Women.<br>
+            Ask me anything — I'm here to help!</p>
+            <p style="color:rgba(240,238,255,0.35);font-size:0.75rem;margin-top:1rem;">👇 Tap a topic to get started</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # ── Suggested questions ──
-    SUGGESTIONS = [
-        "🏫 How do I get admission to BVRIT?",
-        "💰 What are the fees at BVRIT?",
-        "🏆 What are the placement stats?",
-    ]
-    st.markdown("<div style='display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;padding:0 1rem 1rem;'>", unsafe_allow_html=True)
-    cols = st.columns(len(SUGGESTIONS))
-    for i, (col, suggestion) in enumerate(zip(cols, SUGGESTIONS)):
-        with col:
-            if st.button(suggestion, key=f"suggestion_{i}", use_container_width=True):
-                # Strip the emoji prefix to get the clean question
-                clean = suggestion.split(" ", 1)[1]
-                st.session_state.suggested_query = clean
-                st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-else:
-    for msg in st.session_state.messages:
-        role = msg["role"]  # "user" or "assistant"
-        with st.chat_message(role):
-            if role == "assistant" and msg.get("refused"):
+        TOPICS = [
+            ("🏫", "Admissions", "How do I get admission to BVRIT Hyderabad?"),
+            ("💰", "Fee Structure", "What is the fee structure at BVRIT Hyderabad?"),
+            ("🏆", "Placements", "What are the placement stats at BVRIT?"),
+            ("📚", "Departments", "What B.Tech departments are offered at BVRIT?"),
+            ("🏕️", "Campus Life", "Tell me about campus facilities at BVRIT"),
+            ("📞", "Contact", "How can I contact BVRIT Hyderabad?"),
+        ]
+        col1, col2, col3 = st.columns(3)
+        for i, (emoji, label, query_text) in enumerate(TOPICS):
+            col = [col1, col2, col3][i % 3]
+            with col:
+                if st.button(f"{emoji} {label}", key=f"topic_{i}", use_container_width=True):
+                    st.session_state.suggested_query = query_text
+                    st.rerun()
+
+        SUGGESTIONS = [
+            "🏫 How do I get admission to BVRIT?",
+            "💰 What are the fees at BVRIT?",
+            "🏆 What are the placement stats?",
+        ]
+        cols = st.columns(len(SUGGESTIONS))
+        for i, (col, suggestion) in enumerate(zip(cols, SUGGESTIONS)):
+            with col:
+                if st.button(suggestion, key=f"suggestion_{i}", use_container_width=True):
+                    clean = suggestion.split(" ", 1)[1]
+                    st.session_state.suggested_query = clean
+                    st.rerun()
+    else:
+        for msg in st.session_state.messages:
+            role = msg["role"]
+            with st.chat_message(role):
+                if role == "assistant" and msg.get("refused"):
+                    st.markdown('<span class="refused-badge">⛔ Out of scope</span>', unsafe_allow_html=True)
+                st.markdown(_strip_inline_citations(msg["content"]))
+                if role == "assistant" and msg.get("citations"):
+                    cite_html = '<div class="citations-row">'
+                    for c in msg["citations"]:
+                        cite_html += f'<span class="citation-tag">{c}</span>'
+                    cite_html += "</div>"
+                    st.markdown(cite_html, unsafe_allow_html=True)
+                if role == "assistant" and msg.get("latency"):
+                    st.caption(f"⏱ {msg['latency']:.1f}s · {msg.get('time','')}")
+                if role == "assistant" and msg.get("show_image") and os.path.exists(COLLEGE_IMAGE_PATH):
+                    st.image(COLLEGE_IMAGE_PATH, caption="BVRIT Hyderabad — College Entrance", use_container_width=True)
+
+    # Chat input lives inside tab_chat
+    query = st.chat_input("Ask about BVRITH…")
+
+    if not query and st.session_state.suggested_query:
+        query = st.session_state.suggested_query
+        st.session_state.suggested_query = None
+
+    if query:
+        now = time.strftime("%I:%M %p")
+
+        # Exercise 5: privacy notice on first turn
+        if not st.session_state.privacy_shown:
+            st.session_state.messages.append({"role": "assistant", "content": PRIVACY_NOTICE, "citations": [], "refused": False, "latency": 0.0, "time": now, "show_image": False})
+            st.session_state.privacy_shown = True
+
+        # Exercise 5: clear data command
+        if is_clear_data_command(query):
+            delete_profile(st.session_state.user_id)
+            st.session_state.profile = load_profile(st.session_state.user_id)
+            st.session_state.llm_history = []
+            st.session_state.messages.append({"role": "user", "content": query, "time": now})
+            st.session_state.messages.append({"role": "assistant", "content": "✅ Done! I've deleted all your personal data. I'll treat you as a new user from now on. 🔒", "citations": [], "refused": False, "latency": 0.0, "time": now, "show_image": False})
+            st.rerun()
+
+        st.session_state.messages.append({"role": "user", "content": query, "time": now})
+        with st.chat_message("user"):
+            st.markdown(query)
+
+        with st.chat_message("assistant"):
+            show_image = _is_image_query(query, st.session_state.messages) and os.path.exists(COLLEGE_IMAGE_PATH)
+
+            if show_image:
+                answer = "Here's a photo of BVRITH - College of Engineering for Women! 📸"
+                citations = ["[Section: Campus & Facilities]"]
+                refused = False
+                latency = 0.0
+            else:
+                with st.spinner("Thinking…"):
+                    t0 = time.time()
+
+                    # Exercise 2: compress history every _SUMMARISE_EVERY turns
+                    user_turns = len([m for m in st.session_state.messages if m["role"] == "user"])
+                    if user_turns > 0 and user_turns % _SUMMARISE_EVERY == 0:
+                        st.session_state.llm_history = compress_history(st.session_state.llm_history)
+
+                    # Exercise 4: personalised system prompt
+                    from src.generator import SYSTEM_PROMPT
+                    personalised_prompt = build_personalised_system_prompt(SYSTEM_PROMPT, st.session_state.profile)
+
+                    if use_tools:
+                        result = generate_with_tools(
+                            retriever=st.session_state.retriever,
+                            query=query,
+                            top_k=top_k,
+                            section_filter=section_filter,
+                        )
+                        answer = result["answer"]
+                        citations = result["citations"]
+                        refused = result["refused"]
+                        latency = result["latency_seconds"]
+                        routing = result["routing"]
+                        if routing.startswith("tool:"):
+                            st.caption(f"🔧 Used: {routing[5:]}")
+                        elif routing == "RAG":
+                            st.caption("📄 Used: RAG (knowledge base)")
+                    else:
+                        # Exercise 1: pass full conversation history
+                        answer, citations, refused = generate_answer(
+                            retriever=st.session_state.retriever,
+                            query=query,
+                            top_k=top_k,
+                            section_filter=section_filter,
+                            conversation_history=st.session_state.llm_history,
+                            system_prompt_override=personalised_prompt,
+                        )
+                        latency = time.time() - t0
+
+                    # Exercise 1: append this turn to llm_history
+                    st.session_state.llm_history.append({"role": "user", "content": query})
+                    st.session_state.llm_history.append({"role": "assistant", "content": answer})
+
+                    # Exercise 3+4: extract facts and update persistent profile
+                    st.session_state.profile = update_profile_from_turn(st.session_state.profile, query, answer)
+                    save_profile(st.session_state.profile)
+                    # Persist history to ChromaDB (separate from KB collection)
+                    save_history(st.session_state.user_id, st.session_state.llm_history)
+
+            if refused:
                 st.markdown('<span class="refused-badge">⛔ Out of scope</span>', unsafe_allow_html=True)
-
-            st.markdown(_strip_inline_citations(msg["content"]))
-
-            if role == "assistant" and msg.get("citations"):
+            st.markdown(_strip_inline_citations(answer))
+            if citations:
                 cite_html = '<div class="citations-row">'
-                for c in msg["citations"]:
+                for c in citations:
                     cite_html += f'<span class="citation-tag">{c}</span>'
                 cite_html += "</div>"
                 st.markdown(cite_html, unsafe_allow_html=True)
-
-            if role == "assistant" and msg.get("latency"):
-                st.caption(f"⏱ {msg['latency']:.1f}s · {msg.get('time','')}")
-
-            # Show college image if the original query was image-related
-            if role == "assistant" and msg.get("show_image") and os.path.exists(COLLEGE_IMAGE_PATH):
+            if latency > 0:
+                st.caption(f"⏱ {latency:.1f}s · {time.strftime('%I:%M %p')}")
+            if show_image:
                 st.image(COLLEGE_IMAGE_PATH, caption="BVRIT Hyderabad — College Entrance", use_container_width=True)
 
-# ─── Chat Input (st.chat_input) ──────────────────────────────────────────────────
-query = st.chat_input("Ask about BVRITH…")
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer,
+            "citations": citations,
+            "refused": refused,
+            "latency": latency,
+            "time": time.strftime("%I:%M %p"),
+            "show_image": show_image,
+        })
+        st.rerun()
 
-# Pick up a suggestion click if no typed query
-if not query and st.session_state.suggested_query:
-    query = st.session_state.suggested_query
-    st.session_state.suggested_query = None
+# ─── Evaluation Dashboard Tab ────────────────────────────────────────────────────
+with tab_eval:
+    from src.evaluation import run_evaluation, get_fallback_test_cases
 
-if query:
-    now = time.strftime("%I:%M %p")
+    st.markdown("### 📊 8-Dimension Evaluation Dashboard")
+    st.caption("Run the full test suite against the live chatbot and view results with RAGAS scores.")
 
-    # Show user message immediately
-    st.session_state.messages.append({"role": "user", "content": query, "time": now})
-    with st.chat_message("user"):
-        st.markdown(query)
+    if "eval_results" not in st.session_state:
+        st.session_state.eval_results = None
+        st.session_state.eval_report = None
 
-    # Generate answer
-    with st.chat_message("assistant"):
-        show_image = _is_image_query(query, st.session_state.messages) and os.path.exists(COLLEGE_IMAGE_PATH)
-
-        if show_image:
-            # Don't call LLM for image queries — just give a friendly response
-            answer = "Here's a photo of BVRITH - College of Engineering for Women! 📸"
-            citations = ["[Section: Campus & Facilities]"]
-            refused = False
-            latency = 0.0
+    if st.button("▶️ Run Evaluation Suite", use_container_width=True, key="run_eval"):
+        if not st.session_state.index_ready:
+            st.error("Knowledge base not ready. Please wait for indexing to complete.")
         else:
-            with st.spinner("Thinking…"):
-                t0 = time.time()
-                if use_tools:
-                    result = generate_with_tools(
-                        retriever=st.session_state.retriever,
-                        query=query,
-                        top_k=top_k,
-                        section_filter=section_filter,
-                    )
-                    answer = result["answer"]
-                    citations = result["citations"]
-                    refused = result["refused"]
-                    latency = result["latency_seconds"]
-                    # Show routing info in sidebar
-                    routing = result["routing"]
-                    if routing.startswith("tool:"):
-                        st.caption(f"🔧 Used: {routing[5:]}")
-                    elif routing == "RAG":
-                        st.caption("📄 Used: RAG (knowledge base)")
-                else:
-                    answer, citations, refused = generate_answer(
-                        retriever=st.session_state.retriever,
-                        query=query,
-                        top_k=top_k,
-                        section_filter=section_filter,
-                    )
-                    latency = time.time() - t0
+            import docx2txt
+            try:
+                kb_text = docx2txt.process(doc_path)
+            except Exception:
+                kb_text = ""
 
-        if refused:
-            st.markdown('<span class="refused-badge">⛔ Out of scope</span>', unsafe_allow_html=True)
+            # ── Live progress UI ──
+            progress_bar = st.progress(0, text="Preparing test cases…")
+            status_box = st.empty()
+            live_log = st.empty()
+            live_results: list = []
 
-        st.markdown(_strip_inline_citations(answer))
+            def on_progress(i, total, tc, result):
+                live_results.append(result)
+                pct = int(i / total * 100)
+                q = (tc.get("question") or "(empty)")[:55]
+                dim = tc.get("dimension", "")
+                passed_so_far = sum(1 for r in live_results if r.get("passed"))
+                icon = "✅" if result.get("passed") else "❌"
+                lat = result.get("latency", 0)
+                progress_bar.progress(pct, text=f"Test {i}/{total} — {dim}: {q}")
+                status_box.markdown(
+                    f"**{icon} [{dim}]** `{q}` — `{lat:.1f}s`"
+                )
+                live_log.markdown(
+                    f"✅ **{passed_so_far} passed**  |  "
+                    f"❌ **{i - passed_so_far} failed**  |  "
+                    f"📊 **{i}/{total} done**"
+                )
 
-        if citations:
-            cite_html = '<div class="citations-row">'
-            for c in citations:
-                cite_html += f'<span class="citation-tag">{c}</span>'
-            cite_html += "</div>"
-            st.markdown(cite_html, unsafe_allow_html=True)
+            results, report = run_evaluation(
+                retriever=st.session_state.retriever,
+                knowledge_base_text=kb_text,
+                top_k=5,
+                progress_callback=on_progress,
+            )
+            progress_bar.progress(100, text="✅ Evaluation complete!")
+            status_box.empty()
+            st.session_state.eval_results = results
+            st.session_state.eval_report = report
+            st.rerun()
 
-        if latency > 0:
-            st.caption(f"⏱ {latency:.1f}s · {time.strftime('%I:%M %p')}")
+    if st.session_state.eval_results:
+        results = st.session_state.eval_results
+        total = len(results)
+        passed = sum(1 for r in results if r.get("passed", False))
+        failed = total - passed
+        pass_rate = passed / total * 100 if total else 0
 
-        # Show college image if query is about how the college looks
-        if show_image:
-            st.image(COLLEGE_IMAGE_PATH, caption="BVRIT Hyderabad — College Entrance", use_container_width=True)
+        # ── Summary metric cards ──
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Tests", total)
+        c2.metric("✅ Passed", passed)
+        c3.metric("❌ Failed", failed)
+        c4.metric("Pass Rate", f"{pass_rate:.0f}%")
 
-    # Save assistant message
-    now = time.strftime("%I:%M %p")
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": answer,
-        "citations": citations,
-        "refused": refused,
-        "latency": latency,
-        "time": now,
-        "show_image": show_image,
-    })
+        st.markdown("---")
+
+        # ── Per-dimension bar chart ──
+        st.markdown("#### Pass Rate by Dimension")
+        dims: dict = {}
+        for r in results:
+            d = r.get("dimension", "Unknown")
+            dims.setdefault(d, {"total": 0, "passed": 0})
+            dims[d]["total"] += 1
+            if r.get("passed"):
+                dims[d]["passed"] += 1
+
+        dim_names = list(dims.keys())
+        dim_rates = [dims[d]["passed"] / dims[d]["total"] * 100 for d in dim_names]
+        dim_colors = ["#2ecc71" if r == 100 else "#e67e22" if r >= 50 else "#e74c3c" for r in dim_rates]
+
+        bar_html = "<div style='display:flex;flex-direction:column;gap:0.5rem;'>"
+        for name, rate, color in zip(dim_names, dim_rates, dim_colors):
+            p = dims[name]["passed"]
+            t = dims[name]["total"]
+            bar_html += f"""
+            <div style='display:flex;align-items:center;gap:0.8rem;'>
+                <div style='width:120px;font-size:0.8rem;color:#f5ede4;'>{name}</div>
+                <div style='flex:1;background:rgba(255,255,255,0.08);border-radius:6px;height:20px;'>
+                    <div style='width:{rate:.0f}%;background:{color};border-radius:6px;height:20px;'></div>
+                </div>
+                <div style='width:60px;font-size:0.8rem;color:#d4956a;text-align:right;'>{p}/{t} ({rate:.0f}%)</div>
+            </div>"""
+        bar_html += "</div>"
+        st.markdown(bar_html, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ── RAGAS scores ──
+        ragas_results = [r for r in results if r.get("ragas_scores")]
+        if ragas_results:
+            st.markdown("#### RAGAS Metric Scores")
+            metrics = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
+            rc1, rc2, rc3, rc4 = st.columns(4)
+            for col, metric in zip([rc1, rc2, rc3, rc4], metrics):
+                avg = sum(r["ragas_scores"].get(metric, 0.0) for r in ragas_results) / len(ragas_results)
+                col.metric(metric.replace("_", " ").title(), f"{avg:.2f}")
+            st.markdown("---")
+
+        # ── Latency chart ──
+        st.markdown("#### Response Latency per Test")
+        lat_html = "<div style='display:flex;flex-wrap:wrap;gap:0.4rem;'>"
+        for r in results:
+            lat = r.get("latency", 0)
+            color = "#2ecc71" if lat < 5 else "#e67e22" if lat < 15 else "#e74c3c"
+            q_short = r.get("question", "")[:30] + "…"
+            lat_html += f"<div title='{q_short}' style='background:{color};color:#fff;font-size:0.7rem;padding:0.2rem 0.5rem;border-radius:4px;'>{lat:.1f}s</div>"
+        lat_html += "</div>"
+        st.markdown(lat_html, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ── Pass/Fail cards ──
+        st.markdown("#### Test Case Results")
+        for r in results:
+            status = "✅" if r.get("passed") else "❌"
+            color = "rgba(46,204,113,0.1)" if r.get("passed") else "rgba(231,76,60,0.1)"
+            border = "rgba(46,204,113,0.3)" if r.get("passed") else "rgba(231,76,60,0.3)"
+            q = r.get("question", "(empty)") or "(empty)"
+            dim = r.get("dimension", "")
+            lat = r.get("latency", 0)
+            st.markdown(
+                f"<div style='background:{color};border:1px solid {border};border-radius:8px;"
+                f"padding:0.5rem 0.8rem;margin-bottom:0.4rem;'>"
+                f"<b>{status} [{dim}]</b> {q[:80]} "
+                f"<span style='color:#d4956a;font-size:0.75rem;'>⏱ {lat:.1f}s</span></div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+
+        # ── Full text report ──
+        with st.expander("📄 Full Evaluation Report"):
+            st.code(st.session_state.eval_report, language="")
+    else:
+        st.info("Click ▶️ Run Evaluation Suite to start. Results will appear here.")

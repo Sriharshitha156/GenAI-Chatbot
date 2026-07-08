@@ -1,6 +1,6 @@
 # 🎓 BVRIT Hyderabad FAQ Chatbot
 
-**Veda** — A RAG-powered conversational AI assistant for BVRIT Hyderabad College of Engineering for Women. Built for GenAI & Agentic AI Engineering Day 4 Lab.
+**Zia** — A RAG-powered conversational AI assistant for BVRIT Hyderabad College of Engineering for Women.
 
 ---
 
@@ -9,10 +9,13 @@
 - **RAG Architecture** — Retrieval-Augmented Generation with LangChain + ChromaDB
 - **Grounded Responses** — Every answer is sourced from the official BVRIT knowledge base with inline citations
 - **Free LLM** — Uses `openai/gpt-oss-20b:free` via OpenRouter (zero cost, no credits needed)
+- **Agentic Tools** — Fee calculator, date checker, and agentic loop via `agentic_chain.py`
+- **Memory & History** — Persistent conversation history and user profiles across sessions
+- **Observability** — LLM call logging via `src/observability.py`
 - **Smart Query Handling** — Recognizes BVRITH/bvrith/BVRIT Hyderabad as the same college, rejects queries about other institutions
 - **Image Support** — Shows college entrance photo on relevant queries
 - **Dual Theme** — Light and dark mode support with smooth animations
-- **Friendly Persona** — Veda 🎓, a warm and helpful guide with conversational responses
+- **Friendly Persona** — Zia 🎓, a warm and helpful guide with conversational responses
 - **Safety Guardrails** — Refuses sensitive info requests, prompt injections, and out-of-scope queries
 - **8-Dimension Evaluation** — Test suite covering Functional, Quality, Safety, Security, Robustness, Performance, Context, and RAGAS metrics
 
@@ -41,13 +44,18 @@
     └────┬─────────┘
          │
     ┌────▼─────────┐
-    │ LLM          │  ◄── openai/gpt-oss-20b:free
-    │ (Veda)       │      System prompt with grounding rules
+    │ Agentic      │  ◄── Tool calls: fee_calculator, date_checker
+    │ Chain        │      Falls back to direct RAG if no tools needed
+    └────┬─────────┘
+         │
+    ┌────▼─────────┐
+    │ LLM          │  ◄── openai/gpt-oss-20b:free via OpenRouter
+    │ (Zia)        │      System prompt with grounding rules
     └────┬─────────┘
          │
     ┌────▼─────────┐
     │ Response     │  ◄── Strip inline citations
-    │ Post-Process │      Return (answer, citations, refused)
+    │ Post-Process │      Save to conversation history
     └──────────────┘
 ```
 
@@ -57,9 +65,12 @@
 |-----------|-----------|---------|
 | **Document Loader** | `Docx2txtLoader` (LangChain) | Load `.docx` knowledge base |
 | **Text Splitter** | `RecursiveCharacterTextSplitter` | Chunk with size 500, overlap 100 |
-| **Embeddings** | `all-MiniLM-L6-v2` (HuggingFace) | Free local embeddings (1536 dim) |
+| **Embeddings** | `all-MiniLM-L6-v2` (HuggingFace) | Free local embeddings |
 | **Vector Store** | ChromaDB | Persistent storage with metadata |
 | **LLM** | `openai/gpt-oss-20b:free` (OpenRouter) | Zero-cost generation with fallback chain |
+| **Agentic Chain** | LangChain Tools | Fee calculator, date checker |
+| **Memory** | JSON-based store | Persistent conversation history + user profiles |
+| **Observability** | JSONL logging | LLM call tracing |
 | **UI** | Streamlit | Chat interface with st.chat_input |
 | **Evaluation** | RAGAS + LLM-as-judge | 8-dimension test suite |
 
@@ -68,16 +79,22 @@
 ## 📂 Project Structure
 
 ```
-TechVest-4/
+GenAI-ChatBot--main/
 ├── app.py                      # Streamlit UI (main entry point)
+├── agentic_chain.py            # Tool-enabled agentic loop
+├── tools.py                    # Fee calculator, date checker tools
 ├── src/
 │   ├── ingest.py              # Document loading, chunking, embedding, indexing
 │   ├── retriever.py           # Vector search with metadata filtering
-│   ├── generator.py           # Grounded generation with Veda persona
+│   ├── generator.py           # Grounded generation with Zia persona
+│   ├── memory.py              # Conversation memory management
+│   ├── history_store.py       # Persistent history store
+│   ├── observability.py       # LLM call logging
 │   └── evaluation.py          # 8-dimension test suite + RAGAS
 ├── assets/
 │   └── college.png            # BVRIT entrance image
 ├── bvrit_knowledge_base.docx  # Official knowledge base (8 sections)
+├── requirements.txt           # Python dependencies
 ├── run_eval.py                # Run evaluation suite
 ├── .env                       # API keys (not committed)
 ├── .gitignore
@@ -91,53 +108,49 @@ TechVest-4/
 ### Prerequisites
 
 - Python 3.10+
-- OpenRouter API key (get one free at [openrouter.ai](https://openrouter.ai))
+- OpenRouter API key (free at [openrouter.ai](https://openrouter.ai))
 
 ### Installation
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Manvitha-2905/GenAI-ChatBot-.git
-cd GenAI-ChatBot-
+git clone https://github.com/Sriharshitha156/GenAI-Chatbot.git
+cd GenAI-Chatbot
 
 # 2. Install dependencies
-pip install streamlit langchain langchain-chroma langchain-huggingface \
-            sentence-transformers openai python-dotenv chromadb
+pip install -r requirements.txt
 
 # 3. Create .env file
-echo "OPENAI_API_KEY=your_openrouter_api_key_here" > .env
-echo "OPENAI_BASE_URL=https://openrouter.ai/api/v1" >> .env
+echo OPENAI_API_KEY=your_openrouter_api_key_here > .env
+echo OPENAI_BASE_URL=https://openrouter.ai/api/v1 >> .env
 ```
 
 ### Run the App
 
 ```bash
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 The app will:
 1. Load `bvrit_knowledge_base.docx`
-2. Index 66 chunks into ChromaDB (first run only — persists after)
+2. Index chunks into ChromaDB (first run only — persists after)
 3. Launch at `http://localhost:8501`
 
 ---
 
 ## 🔑 Configuration
 
-### API Keys
-
-Add your OpenRouter API key to `.env`:
+### .env file
 
 ```env
 OPENAI_API_KEY=sk-or-v1-...
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-> **Note:** The default model `openai/gpt-oss-20b:free` requires **zero credits** on OpenRouter. No billing needed.
+> The default model `openai/gpt-oss-20b:free` requires **zero credits** on OpenRouter.
 
-### Retrieval Settings
+### Retrieval Settings (Sidebar)
 
-Adjust in the Streamlit sidebar:
 - **Top-K Results** — slider (3–10, default 5)
 - **Section Filter** — dropdown (All, About, Departments, Admissions, Fees, Placements, etc.)
 
@@ -145,7 +158,7 @@ Adjust in the Streamlit sidebar:
 
 ## 📚 Knowledge Base
 
-The chatbot is grounded in `bvrit_knowledge_base.docx`, which contains 8 sections:
+`bvrit_knowledge_base.docx` contains 8 sections:
 
 1. **About BVRITH** — History, vision, mission, accreditations
 2. **Departments** — B.Tech, M.Tech, Ph.D programs
@@ -160,50 +173,60 @@ The chatbot is grounded in `bvrit_knowledge_base.docx`, which contains 8 section
 
 ## 🧪 Evaluation
 
-Run the 8-dimension test suite:
-
 ```bash
 python run_eval.py
 ```
 
-Generates `evaluation_report.txt` with:
-- 20 test cases across all dimensions
-- Pass/fail per dimension
-- RAGAS metrics (faithfulness, answer relevancy, context precision, context recall)
-- Weakest dimension + fix recommendation
-
----
-
-## 🎨 UI Features
-
-- **Dark & Light Mode** — Automatic theme switching based on system/Streamlit settings
-- **Smooth Animations** — Message fade-in, input focus glow, button hover effects
-- **Suggested Questions** — 3 FAQ chips on welcome screen
-- **Citation Tags** — Green pills below each answer showing source sections
-- **Image Display** — College entrance photo on "show me the college" queries
-- **Conversation History** — Maintained in session state
+Generates `evaluation_report.txt` covering 20 test cases across 8 dimensions: Functional, Quality, Safety, Security, Robustness, Performance, Context, and RAGAS metrics.
 
 ---
 
 ## 🛡️ Safety Features
 
-- **Grounding** — Answers ONLY from retrieved context, never from LLM training data
-- **Privacy** — Refuses requests for personal student/staff info, internal security details
-- **Injection Defense** — Rejects attempts to reveal system prompt or change persona
-- **College Filtering** — Only answers BVRIT Hyderabad queries; rejects BVRITN, GRIET, IIT, etc.
-- **No Guarantees** — Never promises individual outcomes like "you will get placed"
+- **Grounding** — Answers only from retrieved context
+- **Privacy** — Refuses personal student/staff info requests
+- **Injection Defense** — Rejects system prompt reveal attempts
+- **College Filtering** — Only answers BVRIT Hyderabad queries
 
 ---
 
-## 🤖 Veda's Personality
+## 🐛 Troubleshooting
 
-- Warm, encouraging, conversational tone
-- Uses light emojis naturally (🎓 😊 🤔)
-- Varies openers, ends with helpful follow-ups
-- Friendly refusals with guidance to administration
+### "ChromaDB has 0 chunks"
+```bash
+# Delete the chroma_db folder and restart
+rm -rf chroma_db
+python -m streamlit run app.py
+```
 
-**Example:**
-> "Hmm, I don't have that specific detail handy! 🤔 For the most accurate info, you can reach the BVRIT Hyderabad team directly at **+91 40 4241 7773** — they'll be happy to help!"
+### "OPENAI_API_KEY not set"
+Create a `.env` file with your OpenRouter key (see Configuration above).
+
+### ImportError / chromadb crash on startup
+Pin compatible versions:
+```bash
+pip install chromadb==1.4.0 opentelemetry-sdk==1.27.0 opentelemetry-exporter-otlp-proto-grpc==1.27.0
+pip install sentence-transformers
+```
+
+### Model returned garbled output
+The app auto-falls back through: `gpt-oss-20b:free` → `liquid/lfm-2.5-1.2b-instruct:free` → `llama-3.3-70b:free` → `gemma-4-26b:free`
+
+---
+
+## ☁️ Deployment (Streamlit Community Cloud)
+
+1. Push your code to GitHub (ensure `.env` is in `.gitignore`)
+2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub
+3. Click **New app** → select your repo, branch `main`, file `app.py`
+4. Under **Advanced settings → Secrets**, add:
+   ```
+   OPENAI_API_KEY = "sk-or-v1-..."
+   OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
+   ```
+5. Click **Deploy** — your app gets a public URL like `https://yourname-chatbot.streamlit.app`
+
+> **Note:** ChromaDB's vector store will be rebuilt on each cold start on Streamlit Cloud since the filesystem is ephemeral. The first message may take ~30 seconds while it re-indexes.
 
 ---
 
@@ -214,32 +237,13 @@ Generates `evaluation_report.txt` with:
 - "When was BVRITH established?"
 - "Show me placement statistics"
 - "Can you show me an image of the college?"
-- "Where is BVRIT Hyderabad located?"
 - "How do I apply for admissions?"
-
----
-
-## 🐛 Troubleshooting
-
-### "ChromaDB has 0 chunks"
-Delete `chroma_db/` folder and restart — it will re-index.
-
-```bash
-rm -rf chroma_db
-streamlit run app.py
-```
-
-### "OPENAI_API_KEY not set"
-Create a `.env` file with your OpenRouter key (see Configuration above).
-
-### "Model returned garbled output"
-The app auto-falls back to `liquid/lfm-2.5-1.2b-instruct:free` → `llama-3.3-70b:free` → `gemma-4-26b:free` if the primary model fails.
 
 ---
 
 ## 📜 License
 
-Built for educational purposes as part of GenAI & Agentic AI Engineering programme, Day 4 Lab.
+Built for educational purposes as part of the GenAI & Agentic AI Engineering programme.
 
 ---
 
@@ -248,8 +252,8 @@ Built for educational purposes as part of GenAI & Agentic AI Engineering program
 - **BVRIT Hyderabad** — For the official knowledge base
 - **OpenRouter** — For free LLM access
 - **LangChain & ChromaDB** — RAG framework and vector store
-- **Streamlit** — Beautiful chat UI
+- **Streamlit** — Chat UI
 
 ---
 
-**Veda 🎓 is ready to help! Ask anything about BVRIT Hyderabad.**
+**Zia 🎓 is ready to help! Ask anything about BVRIT Hyderabad.**
