@@ -2,6 +2,8 @@
 
 **Zia** — A RAG-powered conversational AI assistant for BVRIT Hyderabad College of Engineering for Women.
 
+🌐 **Live Demo:** [https://genai-chatbot-fwac5ogv6qbjelv6x5axbn.streamlit.app](https://genai-chatbot-fwac5ogv6qbjelv6x5axbn.streamlit.app)
+
 ---
 
 ## 🌟 Features
