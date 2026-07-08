@@ -10,7 +10,7 @@
 
 - **RAG Architecture** — Retrieval-Augmented Generation with LangChain + ChromaDB
 - **Grounded Responses** — Every answer is sourced from the official BVRIT knowledge base with inline citations
-- **Free LLM** — Uses `openai/gpt-oss-20b:free` via OpenRouter (zero cost, no credits needed)
+- **LLM** — Uses `gpt-4o-mini` via GitHub Models (Azure inference endpoint), with `gpt-4o` as fallback
 - **Agentic Tools** — Fee calculator, date checker, and agentic loop via `agentic_chain.py`
 - **Memory & History** — Persistent conversation history and user profiles across sessions
 - **Observability** — LLM call logging via `src/observability.py`
@@ -51,7 +51,7 @@
     └────┬─────────┘
          │
     ┌────▼─────────┐
-    │ LLM          │  ◄── openai/gpt-oss-20b:free via OpenRouter
+    │ LLM          │  ◄── gpt-4o-mini via GitHub Models
     │ (Zia)        │      System prompt with grounding rules
     └────┬─────────┘
          │
@@ -69,7 +69,7 @@
 | **Text Splitter** | `RecursiveCharacterTextSplitter` | Chunk with size 500, overlap 100 |
 | **Embeddings** | `all-MiniLM-L6-v2` (HuggingFace) | Free local embeddings |
 | **Vector Store** | ChromaDB | Persistent storage with metadata |
-| **LLM** | `openai/gpt-oss-20b:free` (OpenRouter) | Zero-cost generation with fallback chain |
+| **LLM** | `gpt-4o-mini` (GitHub Models) | Zero-cost generation with `gpt-4o` fallback |
 | **Agentic Chain** | LangChain Tools | Fee calculator, date checker |
 | **Memory** | JSON-based store | Persistent conversation history + user profiles |
 | **Observability** | JSONL logging | LLM call tracing |
@@ -145,11 +145,11 @@ The app will:
 ### .env file
 
 ```env
-OPENAI_API_KEY=sk-or-v1-...
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_API_KEY=ghp_your_github_token_here
+OPENAI_BASE_URL=https://models.inference.ai.azure.com
 ```
 
-> The default model `openai/gpt-oss-20b:free` requires **zero credits** on OpenRouter.
+> Uses GitHub Models (free tier). Get a token at [github.com/settings/tokens](https://github.com/settings/tokens) — enable **Models** access.
 
 ### Retrieval Settings (Sidebar)
 
@@ -223,8 +223,8 @@ The app auto-falls back through: `gpt-oss-20b:free` → `liquid/lfm-2.5-1.2b-ins
 3. Click **New app** → select your repo, branch `main`, file `app.py`
 4. Under **Advanced settings → Secrets**, add:
    ```
-   OPENAI_API_KEY = "sk-or-v1-..."
-   OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
+   OPENAI_API_KEY = "ghp_your_github_token_here"
+   OPENAI_BASE_URL = "https://models.inference.ai.azure.com"
    ```
 5. Click **Deploy** — your app gets a public URL like `https://yourname-chatbot.streamlit.app`
 
